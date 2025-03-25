@@ -3,7 +3,6 @@
 # .\activate
 # pip install flask pyotp qrcode pillow mysql-connector-python flask-jwt-extended
 
-
 from flask import Flask, request, jsonify, send_file
 import pyotp
 import qrcode
@@ -32,22 +31,22 @@ user_secrets = {}
 
 # Create Users and Products tables if they don't exist
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS Users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    password VARCHAR(256) NOT NULL,
-    secret_key VARCHAR(256)
-)
+    CREATE TABLE IF NOT EXISTS Users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        password VARCHAR(256) NOT NULL,
+        secret_key VARCHAR(256)
+    )
 """)
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS Products (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    description VARCHAR(255),
-    price DECIMAL(10, 2) NOT NULL,
-    quantity INT NOT NULL
-)
+    CREATE TABLE IF NOT EXISTS Products (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        description VARCHAR(255),
+        price DECIMAL(10, 2) NOT NULL,
+        quantity INT NOT NULL
+    )
 """)
 db.commit()
 
@@ -73,18 +72,21 @@ def register():
 
     return jsonify({'message': 'User registered successfully'}), 201
 
-# Generate 2FA QR Code
-@app.route('/generate-2fa/<username>', methods=['GET'])
-def generate_2fa(username):
-    cursor.execute("SELECT secret_key FROM Users WHERE username = %s", (username,))
-    secret = cursor.fetchone()
-    if not secret:
-        return jsonify({'message': 'User not found'}), 404
+# Login Endpoint
+@app.route('/login', methods=['POST'])
+def login():
+    username = request.json.get('username')
+    password = request.json.get('password')
 
-    secret = secret[0]
-    uri = pyotp.totp.TOTP(secret).provisioning_uri(name=username, issuer_name='Flask_2FA_App')
+    # Retrieve user from database
+    cursor.execute("SELECT * FROM Users WHERE username = %s", (username,))
+    user = cursor.fetchone()
 
-    # Generate QR code
+    if not user or not check_password_hash(user[2], password):
+        return jsonify({'message': 'Invalid username or password'}), 401
+
+    # Generate QR code for 2FA setup
+    uri = pyotp.totp.TOTP(user[3]).provisioning_uri(name=username, issuer_name='Flask_2FA_App')
     qr = qrcode.make(uri)
     img = io.BytesIO()
     qr.save(img)
